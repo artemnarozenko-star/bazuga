@@ -42,7 +42,7 @@
 
 ## 📸 Скриншоты 
 
-![Главный экран](ссылка_на_картинку_тут.png)
+![кот](https://yandex.ru/images/search?text=кот&img_url=https%3A%2F%2Fimg.magnific.com%2Ffree-photo%2Fadorable-cat-lifestyle_23-2151593336.jpg%3Fsemt%3Dais_hybrid&pos=1&rpt=simage&stype=image&lr=968&parent-reqid=1782213351979074-6515319228093579242-balancer-l7leveler-kubr-yp-klg-310-BAL&source=serp)
 
 ---
 
