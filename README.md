@@ -54,9 +54,9 @@
 
 | Кто | Контакт |
 | :--- | :--- |
-| **Артем Нароженко** | [ВК](https://vk.ru/prosto_temka_1) | [Email](mailto:...) |
-| **Илья Меднис** | [Telegram]() | [Email](mailto:...) |
-| **Мария Иванова** | [Telegram](https://t.me/krapIVA8877) | [Email](mailto:...) |
+| **Артем Нароженко** | [ВК](https://vk.ru/prosto_temka_1) |
+| **Илья Меднис** | [ВК](https://vk.ru/tapochka_01) | 
+| **Мария Иванова** | [ВК](https://vk.com/qqqjjjppp0) | 
 
 ---
 
