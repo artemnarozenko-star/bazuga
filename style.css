@@ -12,3 +12,194 @@ body {
     position: relative;
     min-height: 100vh;
 }
+
+/* Контейнер */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+}
+
+/* Форма пользователя */
+.user-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 250px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 100;
+    border: 1px solid #ddd;
+}
+
+.filters-section {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-right: 300px;
+    margin-bottom: 30px;
+    max-width: 800px;
+}
+
+    .filters-section h1 {
+        color: #2c3e50;
+        margin-bottom: 25px;
+        font-size: 28px;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+    }
+
+    .filters-section h3 {
+        color: #34495e;
+        margin: 0 0 20px 0;
+        font-size: 20px;
+    }
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+    .filter-group label {
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #2c3e50;
+        font-size: 14px;
+    }
+
+    .filter-group input,
+    .filter-group select {
+        padding: 12px;
+        border: 2px solid #ecf0f1;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+    }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+/* Кнопки */
+.btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    font-size: 14px;
+}
+
+.btn-primary {
+    background: #3498db;
+    color: white;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+/* Карточки автомобилей */
+.cars-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.car-card {
+    border: 1px solid #ddd;
+    padding: 15px;
+    width: 300px;
+    background: white;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+    .car-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .car-card img {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+
+.car-price {
+    font-size: 24px;
+    color: #e74c3c;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+/* Пагинация */
+.pagination {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.pagination-container {
+    display: inline-block;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.pagination form {
+    display: inline;
+}
+
+.pagination button {
+    padding: 8px 15px;
+    margin: 0 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.pagination .current-page {
+    background: #e74c3c;
+    color: white;
+    font-weight: bold;
+}
+
+/* Навигация */
+.nav-link {
+    position: absolute;
+    top: 0;
+    padding: 10px;
+    background: #3498db;
+    color: white;
+    text-decoration: none;
+    border-radius: 0 0 5px 0;
+    z-index: 99;
+}
+
+.nav-cart {
+    left: 0;
+}
+
+.nav-orders {
+    right: 390px;
+}
+
+.back-link {
+    text-decoration: none;
+    color: #3498db;
+    font-size: 16px;
+    margin-bottom: 20px;
+    display: inline-block;
+}
