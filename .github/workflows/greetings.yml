@@ -1,0 +1,40 @@
+name: 🤖 Приветствие новичков
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  greeting:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+    - uses: actions/first-interaction@v1
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        
+        issue-message: |
+          👋 Привет! Спасибо, что создаёшь первый Issue!
+          
+          Мы скоро проверим твою задачу.
+          Если нужно уточнить детали — мы напишем.
+          
+          ⭐️ Поставь звёздочку проекту, если он тебе нравится!
+          
+          С уважением,
+          Команда «Автосалон» 🚗
+        
+        pr-message: |
+          🚀 Спасибо за первый Pull Request!
+          
+          Мы проверим твой код в ближайшее время.
+          Если нужны правки — мы напишем в комментариях.
+          
+          ⭐️ Поставь звёздочку проекту!
+          
+          Спасибо за вклад! ❤️
