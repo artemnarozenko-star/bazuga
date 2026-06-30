@@ -1,15 +1,34 @@
-<?session_start();
+<?php
+session_start();
 $mysqli = new mysqli('localhost', 'root', '', 'avtosalon');
 if ($mysqli->connect_error) {
     die('Connect Error (' . $mysqli->connect_errno . ') ' . $mysqli->connect_error);
 }
 
-#echo '<link rel="stylesheet" href="style.css">';
+echo '<link rel="stylesheet" href="style.css">';
 
 function safe($value) {
     global $mysqli;
     return $mysqli->real_escape_string(strip_tags(trim($value)));
 }
+
+$brands_menu_result = $mysqli->query("SELECT brand_id, brand_name FROM brands ORDER BY brand_name");
+$brands_menu = [];
+while ($row = $brands_menu_result->fetch_assoc()) {
+    $brands_menu[] = $row;
+}
+
+$brand_icons = [
+    'Toyota' => '🇯🇵',
+    'Ford' => '🇺🇸',
+    'BMW' => '🇩🇪',
+    'Lamborghini' => '🇮🇹',
+    'Porsche' => '🇩🇪',
+    'Lada' => '🇷🇺',
+    'Audi' => '🇩🇪',
+    'Mitsubishi' => '🇯🇵',
+    'Mercedes-Benz' => '🇩🇪'
+];
 
 $cars_per_page = 3; 
 if (isset($_POST['page'])) {
@@ -27,9 +46,7 @@ if(isset($_SESSION['user_id'])){
         if(isset($_GET['car_id'])){
             setcookie('recently_viewed', $_GET['car_id']);
         }
-    }
-}
-    else{
+    } else {
         if(isset($_GET['car_id'])) {
             $val = $_COOKIE['recently_viewed'];
             $arr = explode(';', $val);
@@ -40,7 +57,7 @@ if(isset($_SESSION['user_id'])){
             $arr = array_slice($arr, 0, 3);
             $newval = implode(';', $arr); 
             setcookie('recently_viewed', $newval);
-        
+        }
     }
 }
 
@@ -256,7 +273,7 @@ if (isset($_POST['login_submit'])) {
         $user = $result->fetch_assoc();
         
         if ($user) {
-            if ($user['password'] === $pass) {
+            if (password_verify($pass . $user['salt'], $user['password'])) {
                 $_SESSION['user_id'] = $user['user_id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['phone'] = $user['phone'];
@@ -290,10 +307,13 @@ if (isset($_POST['register_submit'])) {
             if (preg_match('/^[a-zA-Z0-9]{3,20}$/', $username)) {
                 if (strlen($pass) >= 6) {
                     if (preg_match('/^\+7\d{3}\d{3}\d{2}\d{2}$/', $phone)) {
+                        $salt = bin2hex(random_bytes(32)); 
+                        $hashed_password = password_hash($pass . $salt, PASSWORD_DEFAULT); 
+                        
                         $photo = '';
-                        $stmt = $mysqli->prepare("INSERT INTO users (username, password, phone, photo) VALUES (?, ?, ?, ?)");
+                        $stmt = $mysqli->prepare("INSERT INTO users (username, password, salt, phone, photo) VALUES (?, ?, ?, ?, ?)");
                         if ($stmt) {
-                            $stmt->bind_param("ssss", $username, $pass, $phone, $photo);
+                            $stmt->bind_param("sssss", $username, $hashed_password, $salt, $phone, $photo);
                             
                             if ($stmt->execute()) {
                                 $_SESSION['user_id'] = $mysqli->insert_id;
@@ -325,6 +345,355 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
+// ===== СТРАНИЦА БРЕНДА =====
+if (isset($_GET['brand'])) {
+    $brand_name = safe($_GET['brand']);
+    $brand_info_result = $mysqli->query("SELECT * FROM brands WHERE brand_name = '$brand_name'");
+    
+    if ($brand_info_result && $brand_info_result->num_rows > 0) {
+        $brand_info = $brand_info_result->fetch_assoc();
+        
+        $cars_count_result = $mysqli->query("SELECT COUNT(*) as count FROM products WHERE brand = '$brand_name'");
+        $cars_count = $cars_count_result->fetch_assoc()['count'];
+        
+        $likes_result = $mysqli->query("
+            SELECT COUNT(likes.like_id) as total_likes 
+            FROM likes 
+            JOIN products ON likes.product_id = products.product_id 
+            WHERE products.brand = '$brand_name'
+        ");
+        $total_likes = $likes_result->fetch_assoc()['total_likes'] ?? 0;
+        ?>
+        
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <link rel="stylesheet" href="style.css">
+            <style>
+                .brand-header {
+                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                    color: white;
+                    padding: 40px 20px;
+                    border-radius: 10px;
+                    margin-bottom: 30px;
+                }
+                .stat-card {
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    text-align: center;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+                .stat-number {
+                    font-size: 32px;
+                    font-weight: bold;
+                    color: #e74c3c;
+                }
+                .stat-label {
+                    color: #7f8c8d;
+                    margin-top: 5px;
+                }
+                .brand-car-card {
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    transition: transform 0.3s;
+                    background: white;
+                }
+                .brand-car-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+                }
+                .brand-car-card img {
+                    width: 100%;
+                    height: 200px;
+                    object-fit: cover;
+                }
+                .brand-car-card-body {
+                    padding: 15px;
+                }
+                .info-item {
+                    background: #f8f9fa;
+                    padding: 10px;
+                    border-radius: 5px;
+                    margin-bottom: 10px;
+                }
+                .info-item strong {
+                    display: block;
+                    color: #7f8c8d;
+                    font-size: 12px;
+                    margin-bottom: 3px;
+                }
+                .info-item span {
+                    color: #2c3e50;
+                    font-weight: 500;
+                }
+                .brand-menu {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    background: #1a1a2e;
+                    padding: 12px 20px;
+                    z-index: 1000;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                }
+                .brand-menu a {
+                    color: white;
+                    text-decoration: none;
+                    padding: 6px 14px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    transition: all 0.3s;
+                }
+                .brand-menu a:hover {
+                    background: #e74c3c;
+                }
+                .brand-menu .active {
+                    background: #e74c3c;
+                }
+                .brand-page {
+                    margin-top: 80px;
+                    padding: 20px;
+                    max-width: 1200px;
+                    margin-left: auto;
+                    margin-right: auto;
+                }
+                .car-card {
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    transition: transform 0.3s;
+                    background: white;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .car-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+                }
+                .car-card img {
+                    width: 100%;
+                    height: 200px;
+                    object-fit: cover;
+                }
+                .car-card-body {
+                    padding: 15px;
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                }
+                .car-card-body h4 {
+                    margin: 0 0 5px 0;
+                    font-size: 18px;
+                }
+                .car-card-body .price {
+                    font-size: 22px;
+                    color: #e74c3c;
+                    font-weight: bold;
+                    margin-top: 10px;
+                }
+                .car-card-body .likes {
+                    color: #666;
+                    font-size: 14px;
+                    margin-top: 5px;
+                }
+                .car-card-body .details-link {
+                    margin-top: 10px;
+                    text-align: center;
+                    color: #3498db;
+                    font-size: 13px;
+                }
+                @media (max-width: 768px) {
+                    .brand-menu a {
+                        font-size: 12px;
+                        padding: 4px 10px;
+                    }
+                    .brand-header h1 {
+                        font-size: 32px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="brand-menu">
+                <a href="?" style="font-weight:bold; font-size:18px;">🏠 Главная</a>
+                <? if (isset($_SESSION['user_id'])): ?>
+                    <a href="?cart=1" style="background:#e74c3c;">🛒 Корзина</a>
+                    <a href="?orders=1" style="background:#3498db;">📦 Заказы</a>
+                <? endif; ?>
+                <span style="color:#666; margin:0 5px;">|</span>
+                <? foreach ($brands_menu as $brand): 
+                    $icon = isset($brand_icons[$brand['brand_name']]) ? $brand_icons[$brand['brand_name']] : '🚗';
+                    $is_active = ($brand['brand_name'] == $brand_name) ? 'active' : '';
+                ?>
+                    <a href="?brand=<? echo urlencode($brand['brand_name']); ?>" class="<? echo $is_active; ?>">
+                        <? echo $icon . ' ' . $brand['brand_name']; ?>
+                    </a>
+                <? endforeach; ?>
+            </div>
+            
+            <div style="position:fixed; top:70px; right:20px; z-index:999;">
+                <? authForm(); ?>
+            </div>
+            
+            <div class="brand-page">
+                <div class="brand-header">
+                    <div style="display: flex; align-items: center; gap: 30px; flex-wrap: wrap;">
+                        <div style="font-size: 80px;">🚗</div>
+                        <div>
+                            <h1 style="margin: 0; font-size: 48px;"><? echo $brand_info['brand_name']; ?></h1>
+                            <p style="opacity: 0.8; margin: 5px 0 0 0;"><? echo $brand_info['headquarters'] ?? 'Штаб-квартира не указана'; ?></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                    <div class="stat-card">
+                        <div class="stat-number"><? echo $cars_count; ?></div>
+                        <div class="stat-label">Автомобилей в продаже</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number"><? echo $total_likes; ?></div>
+                        <div class="stat-label">Всего лайков</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number"><? echo $brand_info['founded_year'] ?? '—'; ?></div>
+                        <div class="stat-label">Год основания</div>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 30px;">
+                    <div>
+                        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                            <h2 style="color: #2c3e50; margin-top: 0;">О бренде</h2>
+                            <p style="line-height: 1.8; color: #34495e;"><? echo nl2br($brand_info['description']); ?></p>
+                        </div>
+                        
+                        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <h2 style="color: #2c3e50; margin-top: 0;">Все автомобили <? echo $brand_info['brand_name']; ?></h2>
+                            
+                            <? 
+                            $all_cars_result = $mysqli->query("
+                                SELECT *, 
+                                (SELECT image FROM images WHERE product_id = products.product_id AND main_image = 1 LIMIT 1) as image 
+                                FROM products 
+                                WHERE brand = '$brand_name' 
+                                ORDER BY product_id DESC
+                            ");
+                            
+                            if ($all_cars_result && $all_cars_result->num_rows > 0) {
+                                echo '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">';
+                                
+                                while ($car = $all_cars_result->fetch_assoc()) {
+                                    $is_liked = false;
+                                    if (isset($_SESSION['user_id'])) {
+                                        $check_like = $mysqli->query("SELECT * FROM likes WHERE user_id = " . $_SESSION['user_id'] . " AND product_id = " . $car['product_id']);
+                                        $is_liked = $check_like->num_rows > 0;
+                                    }
+                                    $likes_count = $mysqli->query("SELECT COUNT(*) as count FROM likes WHERE product_id = " . $car['product_id'])->fetch_assoc()['count'];
+
+                                    echo '
+                                    <div class="car-card" onclick="location.href=\'?car_id=' . $car['product_id'] . '\'">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; padding: 10px 15px 0 15px;">
+                                            <h3 style="margin: 0;">' . $car['brand'] . ' ' . $car['model'] . '</h3>
+                                            ' . (isset($_SESSION['user_id']) ? '
+                                            <div onclick="event.stopPropagation();">
+                                                <form method="POST" style="margin: 0; display: inline-block;">
+                                                    <input type="hidden" name="like_car" value="' . $car['product_id'] . '">
+                                                    <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 24px; color: ' . ($is_liked ? '#e74c3c' : '#ccc') . '; transition: transform 0.2s;" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'scale(1)\'">
+                                                        ♥
+                                                    </button>
+                                                </form>
+                                            </div>' : '<span style="font-size: 18px; color: #ccc;">♥</span>') . '
+                                        </div>
+                                        <div style="padding: 0 15px;">';
+                                    
+                                    if (!empty($car['image'])) {
+                                        echo '<img src="' . $car['image'] . '" alt="' . $car['brand'] . ' ' . $car['model'] . '" style="width: 100%; height: 200px; object-fit: cover; border-radius: 4px;">';
+                                    } else {
+                                        echo '<div style="width: 100%; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border-radius: 4px;">Нет фото</div>';
+                                    }
+                                    
+                                    echo '</div>
+                                        <div class="car-card-body">
+                                            <p style="margin: 0 0 5px 0; color: #666; font-size: 14px;">' . $car['year'] . ' год • ' . $car['engine'] . '</p>
+                                            <div style="margin-top: auto;">
+                                                <div class="price">$' . number_format($car['price']) . '</div>
+                                                <div class="likes">♥ ' . $likes_count . '</div>
+                                                <div class="details-link">Подробнее →</div>
+                                            </div>
+                                        </div>
+                                    </div>';
+                                }
+                                
+                                echo '</div>';
+                            } else {
+                                echo '<p style="text-align: center; color: #999; padding: 30px;">Нет автомобилей этого бренда в продаже</p>';
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); position: sticky; top: 90px;">
+                            <h3 style="color: #2c3e50; margin-top: 0;">Информация</h3>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <? if (!empty($brand_info['founded_year'])): ?>
+                                    <div class="info-item">
+                                        <strong>📅 Год основания</strong>
+                                        <span><? echo $brand_info['founded_year']; ?></span>
+                                    </div>
+                                <? endif; ?>
+                                
+                                <? if (!empty($brand_info['founder'])): ?>
+                                    <div class="info-item">
+                                        <strong>👤 Основатель</strong>
+                                        <span><? echo $brand_info['founder']; ?></span>
+                                    </div>
+                                <? endif; ?>
+                                
+                                <? if (!empty($brand_info['headquarters'])): ?>
+                                    <div class="info-item">
+                                        <strong>📍 Штаб-квартира</strong>
+                                        <span><? echo $brand_info['headquarters']; ?></span>
+                                    </div>
+                                <? endif; ?>
+                                
+                                <? if (!empty($brand_info['website'])): ?>
+                                    <div class="info-item">
+                                        <strong>🌐 Официальный сайт</strong>
+                                        <span><a href="<? echo $brand_info['website']; ?>" target="_blank" style="color: #3498db; text-decoration: none;"><? echo str_replace(['https://', 'http://'], '', $brand_info['website']); ?></a></span>
+                                    </div>
+                                <? endif; ?>
+                            </div>
+                            
+                            <? if (!empty($brand_info['website'])): ?>
+                                <div style="margin-top: 20px; text-align: center;">
+                                    <a href="<? echo $brand_info['website']; ?>" target="_blank" style="background: #27ae60; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block; width: 100%; box-sizing: border-box; text-align: center;">
+                                        Перейти на официальный сайт →
+                                    </a>
+                                </div>
+                            <? endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        <?
+        exit;
+    } else {
+        echo "<script>alert('Бренд не найден!'); location.href = '?';</script>";
+        exit;
+    }
+}
+
+// ===== КОРЗИНА =====
 if (isset($_GET['cart'])) {
     if (!isset($_SESSION['user_id'])) {
         echo "<script>alert('Войдите чтобы просмотреть корзину!'); location.href = '';</script>";
@@ -341,8 +710,21 @@ if (isset($_GET['cart'])) {
         WHERE cart_items.user_id = $user_id
     ");
     
-    echo '<div style="position:absolute; top:0; right:0; padding:5px; background:#f0f0f0; border:1px solid #ccc;">';
-        authForm();
+    echo '<div style="position:fixed; top:0; left:0; right:0; background:#1a1a2e; padding:12px 20px; z-index:1000; display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-shadow:0 2px 10px rgba(0,0,0,0.3);">';
+    echo '<a href="?" style="color:white; text-decoration:none; font-weight:bold; font-size:18px;">🏠 Главная</a>';
+    if (isset($_SESSION['user_id'])) {
+        echo '<a href="?cart=1" style="color:white; text-decoration:none; padding:5px 12px; background:#e74c3c; border-radius:20px;">🛒 Корзина</a>';
+        echo '<a href="?orders=1" style="color:white; text-decoration:none; padding:5px 12px; background:#3498db; border-radius:20px;">📦 Заказы</a>';
+    }
+    echo '<span style="color:#666; margin:0 5px;">|</span>';
+    foreach ($brands_menu as $brand) {
+        $icon = isset($brand_icons[$brand['brand_name']]) ? $brand_icons[$brand['brand_name']] : '🚗';
+        echo '<a href="?brand=' . urlencode($brand['brand_name']) . '" style="color:white; text-decoration:none; padding:6px 14px; border-radius:20px; font-size:14px; transition:all 0.3s;" onmouseover="this.style.background=\'#e74c3c\'" onmouseout="this.style.background=\'transparent\'">' . $icon . ' ' . $brand['brand_name'] . '</a>';
+    }
+    echo '</div>';
+    
+    echo '<div style="position:fixed; top:70px; right:20px; z-index:999;">';
+    authForm();
     echo '</div>';
     ?>
     
@@ -397,6 +779,7 @@ if (isset($_GET['cart'])) {
     exit;
 }
 
+// ===== СТРАНИЦА АВТОМОБИЛЯ =====
 if (isset($_GET['car_id'])) {
     $car_id = safe($_GET['car_id']);
     
@@ -409,7 +792,6 @@ if (isset($_GET['car_id'])) {
         $images[] = $image;
     }
     
-
     $comments_result = $mysqli->query("
         SELECT comments.*, users.username 
         FROM comments 
@@ -418,45 +800,60 @@ if (isset($_GET['car_id'])) {
         ORDER BY comment_date DESC
     ");
     
-    echo '<div style="position:absolute; top:0; right:0; padding:5px; background:#f0f0f0; border:1px solid #ccc;">';
-        authForm();
+    echo '<div style="position:fixed; top:0; left:0; right:0; background:#1a1a2e; padding:12px 20px; z-index:1000; display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-shadow:0 2px 10px rgba(0,0,0,0.3);">';
+    echo '<a href="?" style="color:white; text-decoration:none; font-weight:bold; font-size:18px;">🏠 Главная</a>';
+    if (isset($_SESSION['user_id'])) {
+        echo '<a href="?cart=1" style="color:white; text-decoration:none; padding:5px 12px; background:#e74c3c; border-radius:20px;">🛒 Корзина</a>';
+        echo '<a href="?orders=1" style="color:white; text-decoration:none; padding:5px 12px; background:#3498db; border-radius:20px;">📦 Заказы</a>';
+    }
+    echo '<span style="color:#666; margin:0 5px;">|</span>';
+    foreach ($brands_menu as $brand) {
+        $icon = isset($brand_icons[$brand['brand_name']]) ? $brand_icons[$brand['brand_name']] : '🚗';
+        echo '<a href="?brand=' . urlencode($brand['brand_name']) . '" style="color:white; text-decoration:none; padding:6px 14px; border-radius:20px; font-size:14px; transition:all 0.3s;" onmouseover="this.style.background=\'#e74c3c\'" onmouseout="this.style.background=\'transparent\'">' . $icon . ' ' . $brand['brand_name'] . '</a>';
+    }
+    echo '</div>';
+    
+    echo '<div style="position:fixed; top:70px; right:20px; z-index:999;">';
+    authForm();
     echo '</div>';
     ?>
     
-    <div style="margin-top: 80px; padding: 20px;">
-        <a href="?" style="text-decoration: none; color: #3498db; font-size: 16px;">← Назад к каталогу</a>
+    <div style="margin-top: 80px; padding: 20px; max-width: 1200px; margin-left: auto; margin-right: auto;">
+        <a href="?" style="text-decoration: none; color: #3498db; font-size: 16px; display: inline-block; margin-bottom: 20px;">← Назад к каталогу</a>
         
-        <div style="display: flex; gap: 30px; margin-top: 20px;">
-            <div style="flex: 1;">
-                <h2><? echo $car['brand'] . ' ' . $car['model'] . ' (' . $car['year'] . ')'; ?></h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+            <div style="flex: 1; min-width: 300px;">
+                <h2 style="margin-top: 0;"><? echo $car['brand'] . ' ' . $car['model'] . ' (' . $car['year'] . ')'; ?></h2>
                 
                 <? if (!empty($images)): ?>
-                    <div style="margin-bottom: 15px;">
-                        <? 
-                        $main_image_found = false;
-                        foreach ($images as $image) {
-                            if ($image['main_image'] == 1) {
-                                echo '<img src="' . $image['image'] . '" width="500" height="400" class="im" style="border-radius: 8px; object-fit: cover;"><br>';
-                                $main_image_found = true;
-                                break;
-                            }
-                        }
-                        if (!$main_image_found && !empty($images[0])) {
-                            echo '<img src="' . $images[0]['image'] . '" width="500" height="400" class="im" style="border-radius: 8px; object-fit: cover;"><br>';
-                        }
-                        ?>
+                    <div style="margin-bottom: 15px; border-radius: 8px; overflow: hidden; background: #f8f9fa;">
+                        <img src="<? echo $images[0]['image']; ?>" id="mainImage" style="width:100%; height:400px; object-fit:cover; display:block;">
                     </div>
                     
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <? foreach ($images as $image): ?>
+                        <? foreach ($images as $index => $image): ?>
                             <img src="<? echo $image['image']; ?>" 
-                                 class="im" 
-                                 onClick="f(this)"
-                                 style="width: 80px; height: 60px; object-fit: cover; cursor: pointer; border: 2px solid #ddd; border-radius: 4px;" 
+                                 style="width: 80px; height: 60px; object-fit: cover; border: 2px solid <? echo $index === 0 ? '#3498db' : '#ddd'; ?>; border-radius: 4px; cursor: pointer;" 
+                                 onclick="changeMainImage(this.src, this)" 
                                  onmouseover="this.style.borderColor='#3498db'" 
-                                 onmouseout="this.style.borderColor='#ddd'">
+                                 onmouseout="this.style.borderColor='<? echo $index === 0 ? '#3498db' : '#ddd'; ?>'">
                         <? endforeach; ?>
                     </div>
+                    
+                    <script>
+                    function changeMainImage(src, element) {
+                        document.getElementById('mainImage').src = src;
+                        // Обновляем边框 у всех миниатюр
+                        document.querySelectorAll('.gallery-thumbnail').forEach(function(img) {
+                            img.style.borderColor = '#ddd';
+                        });
+                        element.style.borderColor = '#3498db';
+                    }
+                    // Добавляем класс для миниатюр
+                    document.querySelectorAll('.gallery-thumbnail').forEach(function(img) {
+                        img.className = 'gallery-thumbnail';
+                    });
+                    </script>
                 <? else: ?>
                     <div style="width: 100%; height: 300px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border-radius: 8px;">
                         Нет фото
@@ -464,24 +861,21 @@ if (isset($_GET['car_id'])) {
                 <? endif; ?>
             </div>
             
-            <div style="flex: 1;">
-                <div style="font-size: 28px; color: #e74c3c; font-weight: bold; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 300px;">
+                <div style="font-size: 32px; color: #e74c3c; font-weight: bold; margin-bottom: 20px;">
                     $<? echo number_format($car['price']); ?>
                 </div>
                 
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
                     <h3>Характеристики</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <?
-                        echo '
-                        <p><strong>Год :</strong> ' . $car['year'] . '</p>
-                        <p><strong>Цвет:</strong> ' . $car['color'] . '</p>
-                        <p><strong>Двигатель:</strong> ' . $car['engine'] . '</p>
-                        <p><strong>Мощность:</strong> ' . $car['horsepower'] . ' л.с.</p>
-                        <p><strong>КПП:</strong> ' . $car['transmission'] . '</p>
-                        <p><strong>Привод:</strong> ' . $car['drive'] . '</p>
-                        <p><strong>Топливо:</strong> ' . $car['fuel_type'] . '</p>';?>
-
+                        <p><strong>Год:</strong> <? echo $car['year']; ?></p>
+                        <p><strong>Цвет:</strong> <? echo $car['color']; ?></p>
+                        <p><strong>Двигатель:</strong> <? echo $car['engine']; ?></p>
+                        <p><strong>Мощность:</strong> <? echo $car['horsepower']; ?> л.с.</p>
+                        <p><strong>КПП:</strong> <? echo $car['transmission']; ?></p>
+                        <p><strong>Привод:</strong> <? echo $car['drive']; ?></p>
+                        <p><strong>Топливо:</strong> <? echo $car['fuel_type']; ?></p>
                         <? if (!empty($car['mileage'])): ?>
                             <p><strong>Пробег:</strong> <? echo number_format($car['mileage']); ?> км</p>
                         <? endif; ?>
@@ -519,7 +913,7 @@ if (isset($_GET['car_id'])) {
                         <input type="hidden" name="add_comment" value="1">
                         <input type="hidden" name="product_id" value="<? echo $car_id; ?>">
                         <textarea name="comment_text" placeholder="Оставьте ваш комментарий..." required 
-                                  style="width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px;"></textarea>
+                                  style="width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; box-sizing: border-box;"></textarea>
                         <button type="submit" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">
                             Добавить комментарий
                         </button>
@@ -549,25 +943,11 @@ if (isset($_GET['car_id'])) {
         </div>
     </div>
     
-    <script>
-    function f(obj) {
-        document.getElementsByClassName('im')[0].src = obj.src;
-    }
-    </script>
-    
     <?
     exit; 
 }
 
-echo '<div style="position:absolute; top:0; right:0; padding:5px; background:#f0f0f0; border:1px solid #ccc;">';
-    authForm();
-echo '</div>';
-
-if (isset($_SESSION['user_id'])) {
-    echo '<a href="?cart=1" style="position:absolute; top:0; left:0; padding:10px; background:#3498db; color:white; text-decoration:none; border-radius:0 0 5px 0;">🛒 Корзина</a>';
-    echo '<a href="?orders=1" style="position:absolute; top:0; left:120px; padding:10px; background:#3498db; color:white; text-decoration:none; border-radius:0 0 5px 5px;">Мои заказы</a>';
-}
-
+// ===== ЗАКАЗЫ =====
 if (isset($_GET['orders'])) {
     if (!isset($_SESSION['user_id'])) {
         echo "<script>alert('Войдите чтобы просмотреть заказы!'); location.href = '';</script>";
@@ -584,8 +964,21 @@ if (isset($_GET['orders'])) {
         WHERE user_id = $user_id
         ORDER BY order_date DESC");
     
-    echo '<div style="position:absolute; top:0; right:0; padding:5px; background:#f0f0f0; border:1px solid #ccc;">';
-        authForm();
+    echo '<div style="position:fixed; top:0; left:0; right:0; background:#1a1a2e; padding:12px 20px; z-index:1000; display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-shadow:0 2px 10px rgba(0,0,0,0.3);">';
+    echo '<a href="?" style="color:white; text-decoration:none; font-weight:bold; font-size:18px;">🏠 Главная</a>';
+    if (isset($_SESSION['user_id'])) {
+        echo '<a href="?cart=1" style="color:white; text-decoration:none; padding:5px 12px; background:#e74c3c; border-radius:20px;">🛒 Корзина</a>';
+        echo '<a href="?orders=1" style="color:white; text-decoration:none; padding:5px 12px; background:#3498db; border-radius:20px;">📦 Заказы</a>';
+    }
+    echo '<span style="color:#666; margin:0 5px;">|</span>';
+    foreach ($brands_menu as $brand) {
+        $icon = isset($brand_icons[$brand['brand_name']]) ? $brand_icons[$brand['brand_name']] : '🚗';
+        echo '<a href="?brand=' . urlencode($brand['brand_name']) . '" style="color:white; text-decoration:none; padding:6px 14px; border-radius:20px; font-size:14px; transition:all 0.3s;" onmouseover="this.style.background=\'#e74c3c\'" onmouseout="this.style.background=\'transparent\'">' . $icon . ' ' . $brand['brand_name'] . '</a>';
+    }
+    echo '</div>';
+    
+    echo '<div style="position:fixed; top:70px; right:20px; z-index:999;">';
+    authForm();
     echo '</div>';
     ?>
     
@@ -640,93 +1033,130 @@ if (isset($_GET['orders'])) {
     exit;
 }
 
+// ===== ГЛАВНАЯ СТРАНИЦА =====
+// Получаем параметры фильтрации
+$filter_brand = isset($_GET['filter_brand']) ? safe($_GET['filter_brand']) : '';
+$filter_model = isset($_GET['model']) ? safe($_GET['model']) : '';
+$filter_year_from = isset($_GET['year_from']) ? (int)$_GET['year_from'] : '';
+$filter_year_to = isset($_GET['year_to']) ? (int)$_GET['year_to'] : '';
+$filter_price_from = isset($_GET['price_from']) ? (int)$_GET['price_from'] : '';
+$filter_price_to = isset($_GET['price_to']) ? (int)$_GET['price_to'] : '';
+$filter_color = isset($_GET['color']) ? safe($_GET['color']) : '';
+$filter_fuel_type = isset($_GET['fuel_type']) ? safe($_GET['fuel_type']) : '';
+$filter_transmission = isset($_GET['transmission']) ? safe($_GET['transmission']) : '';
+
 $filter_conditions = "WHERE 1=1";
-if(isset($_GET['brand']) && $_GET['brand'] != '') {
-    $filter_conditions .= " AND brand LIKE '%".safe($_GET['brand'])."%'";
+if($filter_brand != '') {
+    $filter_conditions .= " AND brand = '" . $filter_brand . "'";
 }
-if(isset($_GET['model']) && $_GET['model'] != '') {
-    $filter_conditions .= " AND model LIKE '%".safe($_GET['model'])."%'";
+if($filter_model != '') {
+    $filter_conditions .= " AND model LIKE '%" . $filter_model . "%'";
 }
-if(isset($_GET['year_from']) && $_GET['year_from'] != '') {
-    $filter_conditions .= " AND year >= ".(int)$_GET['year_from'];
+if($filter_year_from != '') {
+    $filter_conditions .= " AND year >= " . $filter_year_from;
 }
-if(isset($_GET['year_to']) && $_GET['year_to'] != '') {
-    $filter_conditions .= " AND year <= ".(int)$_GET['year_to'];
+if($filter_year_to != '') {
+    $filter_conditions .= " AND year <= " . $filter_year_to;
 }
-if(isset($_GET['price_from']) && $_GET['price_from'] != '') {
-    $filter_conditions .= " AND price >= ".(int)$_GET['price_from'];
+if($filter_price_from != '') {
+    $filter_conditions .= " AND price >= " . $filter_price_from;
 }
-if(isset($_GET['price_to']) && $_GET['price_to'] != '') {
-    $filter_conditions .= " AND price <= ".(int)$_GET['price_to'];
+if($filter_price_to != '') {
+    $filter_conditions .= " AND price <= " . $filter_price_to;
 }
-if(isset($_GET['color']) && $_GET['color'] != '') {
-    $filter_conditions .= " AND color LIKE '%".safe($_GET['color'])."%'";
+if($filter_color != '') {
+    $filter_conditions .= " AND color LIKE '%" . $filter_color . "%'";
 }
-if(isset($_GET['fuel_type']) && $_GET['fuel_type'] != '') {
-    $filter_conditions .= " AND fuel_type LIKE '%".safe($_GET['fuel_type'])."%'";
+if($filter_fuel_type != '') {
+    $filter_conditions .= " AND fuel_type LIKE '%" . $filter_fuel_type . "%'";
 }
-if(isset($_GET['transmission']) && $_GET['transmission'] != '') {
-    $filter_conditions .= " AND transmission = '".safe($_GET['transmission'])."'";
+if($filter_transmission != '') {
+    $filter_conditions .= " AND transmission = '" . $filter_transmission . "'";
 }
+
+echo '<div style="position:fixed; top:0; left:0; right:0; background:#1a1a2e; padding:12px 20px; z-index:1000; display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-shadow:0 2px 10px rgba(0,0,0,0.3);">';
+echo '<a href="?" style="color:white; text-decoration:none; font-weight:bold; font-size:18px;">🏠 Главная</a>';
+if (isset($_SESSION['user_id'])) {
+    echo '<a href="?cart=1" style="color:white; text-decoration:none; padding:5px 12px; background:#e74c3c; border-radius:20px;">🛒 Корзина</a>';
+    echo '<a href="?orders=1" style="color:white; text-decoration:none; padding:5px 12px; background:#3498db; border-radius:20px;">📦 Заказы</a>';
+}
+echo '<span style="color:#666; margin:0 5px;">|</span>';
+foreach ($brands_menu as $brand) {
+    $icon = isset($brand_icons[$brand['brand_name']]) ? $brand_icons[$brand['brand_name']] : '🚗';
+    echo '<a href="?brand=' . urlencode($brand['brand_name']) . '" style="color:white; text-decoration:none; padding:6px 14px; border-radius:20px; font-size:14px; transition:all 0.3s;" onmouseover="this.style.background=\'#e74c3c\'" onmouseout="this.style.background=\'transparent\'">' . $icon . ' ' . $brand['brand_name'] . '</a>';
+}
+echo '</div>';
+
+echo '<div style="position:fixed; top:70px; right:20px; z-index:999;">';
+authForm();
+echo '</div>';
 ?>
 
-<div style="margin-top: 20px; padding: 20px;">
+<div style="margin-top: 80px; padding: 20px;">
     
-    
-    <?
-echo '
-<div class="filters-section">
-    
-    <h3>Подобрать автомобиль</h3>
-    <form method="GET" action="">
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; align-items: end;">
-            <div class="filter-group">
-                <label>Марка:</label>
-                <input type="text" name="brand" value="'.($_GET['brand']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <span style="font-weight: bold; color: #2c3e50;">Быстрый фильтр:</span>
+        <a href="?" style="background: #3498db; padding: 5px 15px; border-radius: 15px; text-decoration: none; color: white; font-size: 14px;">Все</a>
+        <? foreach ($brands_menu as $brand): ?>
+            <a href="?filter_brand=<? echo urlencode($brand['brand_name']); ?>" style="background: #ecf0f1; padding: 5px 15px; border-radius: 15px; text-decoration: none; color: #2c3e50; font-size: 14px; transition: 0.3s;" onmouseover="this.style.background='#3498db'; this.style.color='white'" onmouseout="this.style.background='#ecf0f1'; this.style.color='#2c3e50'">
+                <? echo $brand['brand_name']; ?>
+            </a>
+        <? endforeach; ?>
+    </div>
+
+    <?php
+    echo '
+    <div class="filters-section">
+        <h3>Подобрать автомобиль</h3>
+        <form method="GET" action="">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; align-items: end;">
+                <div class="filter-group">
+                    <label>Марка:</label>
+                    <input type="text" name="filter_brand" value="' . ($_GET['filter_brand']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Модель:</label>
+                    <input type="text" name="model" value="' . ($_GET['model']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Год от:</label>
+                    <input type="number" name="year_from" value="' . ($_GET['year_from']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Год до:</label>
+                    <input type="number" name="year_to" value="' . ($_GET['year_to']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Цена от:</label>
+                    <input type="number" name="price_from" value="' . ($_GET['price_from']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Цена до:</label>
+                    <input type="number" name="price_to" value="' . ($_GET['price_to']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Цвет:</label>
+                    <input type="text" name="color" value="' . ($_GET['color']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>Топливо:</label>
+                    <input type="text" name="fuel_type" value="' . ($_GET['fuel_type']??'') . '" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div class="filter-group">
+                    <label>КПП:</label>
+                    <select name="transmission" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="">Все КПП</option>
+                        <option value="Автомат" ' . ((isset($_GET['transmission']) && $_GET['transmission'] == 'Автомат') ? 'selected' : '') . '>Автомат</option>
+                        <option value="Механика" ' . ((isset($_GET['transmission']) && $_GET['transmission'] == 'Механика') ? 'selected' : '') . '>Механика</option>
+                    </select>
+                </div>
+                <div class="filter-group" style="grid-column: span 2;">
+                    <button type="submit" class="btn btn-primary">Применить фильтр</button>
+                    <a href="?" class="btn btn-secondary">Сбросить</a>
+                </div>
             </div>
-            <div class="filter-group">
-                <label>Модель:</label>
-                <input type="text" name="model" value="'.($_GET['model']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Год от:</label>
-                <input type="number" name="year_from" value="'.($_GET['year_from']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Год до:</label>
-                <input type="number" name="year_to" value="'.($_GET['year_to']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Цена от:</label>
-                <input type="number" name="price_from" value="'.($_GET['price_from']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Цена до:</label>
-                <input type="number" name="price_to" value="'.($_GET['price_to']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Цвет:</label>
-                <input type="text" name="color" value="'.($_GET['color']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>Топливо:</label>
-                <input type="text" name="fuel_type" value="'.($_GET['fuel_type']??'').'" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-            </div>
-            <div class="filter-group">
-                <label>КПП:</label>
-                <select name="transmission" style="padding: 8px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="">Все КПП</option>
-                    <option value="Автомат" '.((isset($_GET['transmission']) && $_GET['transmission'] == 'Автомат') ? 'selected' : '').'>Автомат</option>
-                    <option value="Механика" '.((isset($_GET['transmission']) && $_GET['transmission'] == 'Механика') ? 'selected' : '').'>Механика</option>
-                </select>
-            </div>
-            <div class="filter-group" style="grid-column: span 2;">
-                <button type="submit" class="btn btn-primary" >Применить фильтр</button>
-                <a href="?" class="btn btn-secondary" >Сбросить</a>
-            </div>
-        </div>
-    </form>
-</div>';
+        </form>
+    </div>';
 
     if(isset($_SESSION['user_id']) && isset($_COOKIE['recently_viewed'])){
         $val = $_COOKIE['recently_viewed'];
@@ -745,27 +1175,27 @@ echo '
                     $likes_count = $mysqli->query("SELECT COUNT(*) as count FROM likes WHERE product_id = $car_id")->fetch_assoc()['count'];
                     
                     echo '
-                    <div style="border: 1px solid #ddd; padding: 10px; width: 250px; background: white; border-radius: 5px; cursor: pointer;" 
-                         onclick="location.href=\'?car_id=' . $car['product_id'] . '\'">
-                        <h4 style="margin: 0 0 8px 0;">' . $car['brand'] . ' ' . $car['model'] . '</h4>';
+                    <div class="car-card" onclick="location.href=\'?car_id=' . $car['product_id'] . '\'">
+                        <div style="display: flex; justify-content: space-between; align-items: start; padding: 10px 15px 0 15px;">
+                            <h4 style="margin: 0;">' . $car['brand'] . ' ' . $car['model'] . '</h4>
+                        </div>
+                        <div style="padding: 0 15px;">';
                     
                     if (!empty($car['image'])) {
-                        echo '<img src="' . $car['image'] . '" style="width: 100%; height: 150px; object-fit: cover; margin-bottom: 8px;">';
+                        echo '<img src="' . $car['image'] . '" alt="' . $car['brand'] . ' ' . $car['model'] . '">';
                     } else {
-                        echo '<div style="width: 100%; height: 150px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; font-size: 12px;">Нет фото</div>';
+                        echo '<div style="width: 100%; height: 150px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px;">Нет фото</div>';
                     }
                     
-                    echo '
-                        <p style="margin: 2px 0; font-size: 13px;"><strong>Год:</strong> ' . $car['year'] . '</p>
-                        <p style="margin: 2px 0; font-size: 13px;"><strong>Двигатель:</strong> ' . $car['engine'] . '</p>
-                        <div style="font-size: 18px; color: #e74c3c; font-weight: bold; margin-top: 8px;">
-                            $' . number_format($car['price']) . '
-                        </div>
-                        <div style="color: #666; margin-top: 5px; font-size: 12px;">
-                            ♥ ' . $likes_count . ' 
-                        </div>
-                        <div style="color: #3498db; margin-top: 8px; text-align: center; font-size: 12px;">
-                            Нажмите для подробностей →
+                    echo '</div>
+                        <div class="car-card-body">
+                            <p style="margin: 2px 0; font-size: 13px;"><strong>Год:</strong> ' . $car['year'] . '</p>
+                            <p style="margin: 2px 0; font-size: 13px;"><strong>Двигатель:</strong> ' . $car['engine'] . '</p>
+                            <div>
+                                <div class="price">$' . number_format($car['price']) . '</div>
+                                <div class="likes">♥ ' . $likes_count . '</div>
+                                <div class="details-link">Нажмите для подробностей →</div>
+                            </div>
                         </div>
                     </div>';
                 }
@@ -775,6 +1205,7 @@ echo '
             echo '</div>';
         }
     }
+    
     echo '<div style="margin-bottom: 40px;">';
     echo '<h2>Популярные категории</h2>';
     
@@ -822,10 +1253,9 @@ echo '
                     $likes_count = $mysqli->query("SELECT COUNT(*) as count FROM likes WHERE product_id = " . $product['product_id'])->fetch_assoc()['count'];
                     
                     echo '
-                    <div style="border: 1px solid #e0e0e0; padding: 10px; background: white; border-radius: 5px; cursor: pointer;" 
-                         onclick="location.href=\'?car_id=' . $product['product_id'] . '\'">
-                        <div style="display: flex; gap: 10px;">
-                            <div style="flex-shrink: 0;">';
+                    <div class="car-card" onclick="location.href=\'?car_id=' . $product['product_id'] . '\'">
+                        <div style="display: flex; gap: 10px; padding: 10px;">
+                            <div style="flex-shrink: 0; width: 80px; height: 60px;">';
                     
                     if (!empty($image_url)) {
                         echo '<img src="' . $image_url . '" style="width: 80px; height: 60px; object-fit: cover; border-radius: 4px;">';
@@ -865,7 +1295,6 @@ echo '
     
     echo '</div>';
     
-    echo '</div>';
     echo '<h1 style="margin-bottom: 20px;">Автомобили в продаже</h1>';
     $total_cars_result = $mysqli->query("SELECT COUNT(*) as total FROM products $filter_conditions");
     $total_cars = $total_cars_result->fetch_assoc()['total'];
@@ -892,50 +1321,37 @@ echo '
             $likes_count = $mysqli->query("SELECT COUNT(*) as count FROM likes WHERE product_id = " . $car['product_id'])->fetch_assoc()['count'];
             
             echo '
-            <div style="border: 1px solid #ddd; padding: 15px; width: 300px; background: white; border-radius: 5px; cursor: pointer;" 
-                 onclick="location.href=\'?car_id=' . $car['product_id'] . '\'">
-                <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <h3>' . $car['brand'] . ' ' . $car['model'] . '</h3>
+            <div class="car-card" onclick="location.href=\'?car_id=' . $car['product_id'] . '\'">
+                <div style="display: flex; justify-content: space-between; align-items: start; padding: 10px 15px 0 15px;">
+                    <h3 style="margin: 0;">' . $car['brand'] . ' ' . $car['model'] . '</h3>
                     ' . (isset($_SESSION['user_id']) ? '
-                    <form method="POST" style="margin: 0;" onclick="event.stopPropagation()">
-                        <input type="hidden" name="like_car" value="' . $car['product_id'] . '">
-                        <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 24px; color: ' . ($is_liked ? '#e74c3c' : '#ccc') . ';">
-                            ♥
-                        </button>
-                    </form>' : '') . '
-            </div>';
+                    <div onclick="event.stopPropagation();">
+                        <form method="POST" style="margin: 0; display: inline-block;">
+                            <input type="hidden" name="like_car" value="' . $car['product_id'] . '">
+                            <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 24px; color: ' . ($is_liked ? '#e74c3c' : '#ccc') . '; transition: transform 0.2s;" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'scale(1)\'">
+                                ♥
+                            </button>
+                        </form>
+                    </div>' : '<span style="font-size: 18px; color: #ccc;">♥</span>') . '
+                </div>
+                <div style="padding: 0 15px;">';
             
             if (!empty($car['image'])) {
-                echo '<img src="' . $car['image'] . '" style="width: 100%; height: 200px; object-fit: cover; margin-bottom: 10px;">';
+                echo '<img src="' . $car['image'] . '" alt="' . $car['brand'] . ' ' . $car['model'] . '">';
             } else {
-                echo '<div style="width: 100%; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">Нет фото</div>';
+                echo '<div style="width: 100%; height: 200px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border-radius: 4px;">Нет фото</div>';
             }
             
-            echo '
-                <p><strong>Год:</strong> ' . $car['year'] . '</p>
-                <p><strong>Цвет:</strong> ' . $car['color'] . '</p>
-                <p><strong>Двигатель:</strong> ' . $car['engine'] . '</p>
-                <p><strong>Мощность:</strong> ' . $car['horsepower'] . ' л.с.</p>
-                <p><strong>КПП:</strong> ' . $car['transmission'] . '</p>
-                <p><strong>Привод:</strong> ' . $car['drive'] . '</p>
-                <p><strong>Топливо:</strong> ' . $car['fuel_type'] . '</p>';
-            
-            if (!empty($car['description'])) {
-                echo '<p><strong>Описание:</strong> ' . substr($car['description'], 0, 100) . '...</p>';
-            }
-            
-            echo '
-                <div style="font-size: 24px; color: #e74c3c; font-weight: bold; margin-top: 10px;">
-                    $' . number_format($car['price']) . '
+            echo '</div>
+                <div class="car-card-body">
+                    <p style="margin: 0 0 5px 0; color: #666; font-size: 14px;">' . $car['year'] . ' год • ' . $car['engine'] . '</p>
+                    <div style="margin-top: auto;">
+                        <div class="price">$' . number_format($car['price']) . '</div>
+                        <div class="likes">♥ ' . $likes_count . '</div>
+                        <div class="details-link">Нажмите для подробностей →</div>
+                    </div>
                 </div>
-                <div style="color: #666; margin-top: 5px;">
-                    ♥ ' . $likes_count . ' 
-                </div>
-                <div style="color: #3498db; margin-top: 10px; text-align: center;">
-                    Нажмите для подробностей →
-                </div>';
-            
-            echo '</div>';
+            </div>';
         }
         
         echo '</div>';
